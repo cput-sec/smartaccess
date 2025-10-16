@@ -78,23 +78,24 @@ Trust boundaries and transports:
 The following diagram summarizes the flow and data paths:
 
 ```mermaid
-graph TD
+%%{init: {"flowchart": {"curve": "linear", "htmlLabels": true, "useMaxWidth": true}}}%%
+flowchart LR
     subgraph Mobile
-        App[Campus App (SALTO SDK)]
+      App[Campus App - SALTO SDK]
     end
-    subgraph "Campus DC (On-Prem)"
-        BE[Campus Access Backend (REST API)]
-        DB[(SQL Server: Users/Policies)]
-        Ship[SHIP Service]
-        Space[SALTO ProAccess Space]
-        SpaceDB[(SALTO Space SQL DB)]
-        NCoder[NCoder/Encoder]
+    subgraph Campus_DC_On_Prem
+      BE[Campus Access Backend - REST API]
+      DB[SQL Server - Users/Policies]
+      Ship[SHIP Service]
+      Space[SALTO ProAccess Space]
+      SpaceDB[ProAccess Space SQL DB]
+      NCoder[NCoder / Encoder]
     end
-    subgraph "SALTO Cloud"
-        JIC[JustIN Cloud]
+    subgraph SALTO_Cloud
+      JIC[JustIN Cloud]
     end
     subgraph Edge
-        Lock[Locks & Readers (BLE/NFC)]
+      Lock[Locks and Readers - BLE / NFC]
     end
 
     App -- SSO/Auth + device reg --> BE
