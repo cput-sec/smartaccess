@@ -43,9 +43,72 @@ The system is built upon the existing SALTO Space access control platform, exten
 6.  **Electronic Locks & Readers:** SALTO door hardware equipped with BLE and/or RFID/NFC readers that validate credentials and grant or deny access.
 
 ### 2.2. Architectural Flow
-The architecture is designed for end-to-end security. The backend server communicates with the SALTO Space server via SHIP. When a digital key is required, SALTO's NCoder encrypts it. This key is then passed through the JustIN Cloud to the user's device. The mobile device communicates directly with the lock reader, which decrypts the key and makes an access decision.
+The architecture enforces end-to-end security and a clear separation of duties between the campus backend (local server with SQL Server and SALTO Space), SALTO Cloud (for mobile key delivery), and the mobile client.
 
-![Typical SALTO Space access-control architecture with JustIN Mobile integration.](https://user-images.githubusercontent.com/0/placeholder)
+High-level flow:
+
+1) App bootstrap and device enrollment
+- User signs in via campus SSO in the mobile app.
+- App registers the device; backend stores device + user mapping in its SQL Server DB and associates the campus user with the SALTO "Person" record/identifier.
+
+2) Key provisioning (JustIN Mobile)
+- Backend calls SALTO Space via SHIP to create/update the user, assign access levels, and request issuance of a JustIN Mobile key.
+- SALTO Space and the NCoder/encoder service generate an end-to-end encrypted mobile key token.
+- The encrypted key token is handed to SALTO JustIN Cloud, which queues it for delivery to the mobile device.
+- The mobile app (via SALTO SDK and platform-specific SALTO certificates) connects to JustIN Cloud and securely downloads the key, storing it in secure storage (Keychain/Keystore).
+
+3) Door unlock
+- User activates unlock; the app uses the SALTO SDK to present the key over BLE (iOS/Android) or NFC (Android) to the reader/lock.
+- The lock decrypts and validates the token against its permissions and access level; if valid, it grants access.
+
+4) Event logging and synchronization
+- Locks/readers record access events. Online doors forward events to SALTO Space immediately; offline doors buffer and sync later.
+- SALTO Space persists events in its SQL database. The campus backend can query/pull events via SHIP for analytics or cross-system audit if required.
+
+5) Changes, revocation, and fallback
+- When a user’s role/status changes, the backend updates SALTO Space via SHIP. Space invalidates old keys and issues new ones as needed; JustIN Cloud propagates changes to devices.
+- If a user lacks a compatible phone, the backend triggers card issuance; SALTO encoders personalize a MIFARE Classic 4K card aligned to the same access profile.
+
+Trust boundaries and transports:
+- App ↔ Backend: HTTPS (mutual TLS optional); no keys pass through the backend.
+- Backend ↔ SALTO Space (SHIP): Authenticated channel within campus network.
+- App ↔ JustIN Cloud: SALTO SDK using vendor-provided platform credentials.
+- App ↔ Locks: BLE/NFC; payloads are SALTO-encrypted tokens only the target lock can decrypt.
+
+The following diagram summarizes the flow and data paths:
+
+```mermaid
+graph TD
+    subgraph Mobile
+        App[Campus App (SALTO SDK)]
+    end
+    subgraph "Campus DC (On-Prem)"
+        BE[Campus Access Backend (REST API)]
+        DB[(SQL Server: Users/Policies)]
+        Ship[SHIP Service]
+        Space[SALTO ProAccess Space]
+        SpaceDB[(SALTO Space SQL DB)]
+        NCoder[NCoder/Encoder]
+    end
+    subgraph "SALTO Cloud"
+        JIC[JustIN Cloud]
+    end
+    subgraph Edge
+        Lock[Locks & Readers (BLE/NFC)]
+    end
+
+    App -- SSO/Auth + device reg --> BE
+    BE -- CRUD users/roles --> DB
+    BE -- SHIP API calls --> Ship
+    Ship --> Space
+    Space --> SpaceDB
+    Space -- issue mobile key --> NCoder
+    NCoder -- encrypted key token --> JIC
+    JIC -- deliver key via SDK --> App
+    App -- BLE/NFC token --> Lock
+    Lock -- access events --> Space
+    Space -- persist events --> SpaceDB
+```
 
 ---
 
