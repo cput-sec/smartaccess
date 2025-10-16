@@ -78,37 +78,39 @@ Trust boundaries and transports:
 The following diagram summarizes the flow and data paths:
 
 ```mermaid
-%%{init: {"flowchart": {"curve": "linear", "htmlLabels": true, "useMaxWidth": true}}}%%
-flowchart LR
-    subgraph Mobile
-      App[Campus App - SALTO SDK]
-    end
-    subgraph Campus_DC_On_Prem
-      BE[Campus Access Backend - REST API]
-      DB[SQL Server - Users/Policies]
-      Ship[SHIP Service]
-      Space[SALTO ProAccess Space]
-      SpaceDB[ProAccess Space SQL DB]
-      NCoder[NCoder / Encoder]
-    end
-    subgraph SALTO_Cloud
-      JIC[JustIN Cloud]
-    end
-    subgraph Edge
-      Lock[Locks and Readers - BLE / NFC]
-    end
+flowchart TD
+  subgraph Mobile
+    App[Campus App - SALTO SDK]
+  end
 
-    App -- SSO/Auth + device reg --> BE
-    BE -- CRUD users/roles --> DB
-    BE -- SHIP API calls --> Ship
-    Ship --> Space
-    Space --> SpaceDB
-    Space -- issue mobile key --> NCoder
-    NCoder -- encrypted key token --> JIC
-    JIC -- deliver key via SDK --> App
-    App -- BLE/NFC token --> Lock
-    Lock -- access events --> Space
-    Space -- persist events --> SpaceDB
+  subgraph Campus_DC_On_Prem
+    BE[Campus Access Backend - REST API]
+    DB[(SQL Server - Users and Policies)]
+    SHIP[SHIP Service]
+    Space[SALTO ProAccess Space]
+    SpaceDB[(ProAccess Space SQL DB)]
+    NCoder[NCoder and Encoder]
+  end
+
+  subgraph SALTO_Cloud
+    JIC[JustIN Cloud]
+  end
+
+  subgraph Edge
+    Lock[Locks and Readers - BLE and NFC]
+  end
+
+  App -->|SSO auth and device registration| BE
+  BE -->|CRUD users and roles| DB
+  BE -->|SHIP API calls| SHIP
+  SHIP --> Space
+  Space --> SpaceDB
+  Space -->|Issue mobile key| NCoder
+  NCoder -->|Encrypted key token| JIC
+  JIC -->|Deliver key via SDK| App
+  App -->|BLE or NFC token| Lock
+  Lock -->|Access events| Space
+  Space -->|Persist events| SpaceDB
 ```
 
 ---
@@ -162,6 +164,62 @@ The system's object model is composed of the following primary classes:
 *   **DoorLock:** Represents a physical door with a specific `location` and `requiredLevel`.
 *   **AccessEvent:** A log entry for every access attempt, containing `timestamp`, `userID`, `doorID`, and `result`.
 
+Diagram:
+
+```mermaid
+classDiagram
+  class User {
+    +string userID
+    +string name
+    +string email
+    +string type
+  }
+  class MobileDevice {
+    +string deviceID
+    +string osType
+    +string saltoCredentialID
+  }
+  class AccessCredential {
+    +string credentialID
+    +string credentialType
+    +date issuedDate
+    +date expiryDate
+  }
+  class DigitalCredential
+  class PhysicalCard
+  class AccessLevel {
+    +string levelID
+    +string description
+  }
+  class DoorLock {
+    +string doorID
+    +string location
+    +string lockType
+  }
+  class UserAccess {
+    +string accessID
+    +datetime allowedFrom
+    +datetime allowedTo
+  }
+  class AccessEvent {
+    +string eventID
+    +datetime timestamp
+    +string result
+  }
+
+  AccessCredential <|-- DigitalCredential
+  AccessCredential <|-- PhysicalCard
+
+  User o-- MobileDevice : has
+  User o-- AccessCredential : owns
+  User o-- AccessLevel : assigned
+  DoorLock o-- AccessLevel : requires
+  UserAccess -- User : user
+  UserAccess -- DoorLock : door
+  AccessEvent --> User : by
+  AccessEvent --> DoorLock : at
+```
+
 ### 4.2. Entity-Relationship Diagram (ERD)
 The database schema will include the following core entities to support the application:
 
@@ -172,6 +230,62 @@ The database schema will include the following core entities to support the appl
 *   **Doors** (`doorID` PK, `location`, `levelID` FK)
 *   **UserAccess** (`accessID` PK, `userID` FK, `doorID` FK, `validFrom`, `validTo`)
 *   **AccessLogs** (`logID` PK, `userID` FK, `doorID` FK, `timestamp`, `result`)
+
+ERD Diagram:
+
+```mermaid
+erDiagram
+  USERS {
+    string userID PK
+    string name
+    string email
+    string type
+  }
+  MOBILECREDENTIALS {
+    string credentialID PK
+    string userID FK
+    string deviceID
+    string osType
+    date issuedDate
+  }
+  PHYSICALCARDS {
+    string cardID PK
+    string userID FK
+    string mifareID
+    date issuedDate
+  }
+  ACCESSLEVELS {
+    string levelID PK
+    string description
+  }
+  DOORS {
+    string doorID PK
+    string location
+    string levelID FK
+  }
+  USERACCESS {
+    string accessID PK
+    string userID FK
+    string doorID FK
+    datetime validFrom
+    datetime validTo
+  }
+  ACCESSLOGS {
+    string logID PK
+    string userID FK
+    string doorID FK
+    datetime timestamp
+    string result
+  }
+
+  USERS ||--o{ MOBILECREDENTIALS : has
+  USERS ||--o{ PHYSICALCARDS : has
+  ACCESSLEVELS ||--o{ DOORS : defines
+  USERS ||--o{ USERACCESS : has
+  DOORS ||--o{ USERACCESS : includes
+  USERS ||--o{ ACCESSLOGS : logs
+  DOORS ||--o{ ACCESSLOGS : logs
+```
 
 ---
 
